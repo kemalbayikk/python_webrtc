@@ -240,8 +240,6 @@ if __name__ == "__main__":
     # start calling f now and every 60 sec thereafter
     f(f_stop)
 
-    web.run_app(
-        app, access_log=None, host=args.host, port=args.port, ssl_context=ssl_context
-    )
+    web.run_app(app)
 
 
