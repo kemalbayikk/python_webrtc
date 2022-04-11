@@ -216,10 +216,10 @@ if __name__ == "__main__":
     parser.add_argument("--cert-file", help="SSL certificate file (for HTTPS)")
     parser.add_argument("--key-file", help="SSL key file (for HTTPS)")
     parser.add_argument(
-        "--host", default="127.0.0.1", help="Host for HTTP server (default: 0.0.0.0)"
+        "--host", default="fierce-reaches-21033.herokuapp.com", help="Host for HTTP server (default: 0.0.0.0)"
     )
     parser.add_argument(
-        "--port", type=int, default=80, help="Port for HTTP server (default: 8080)"
+        "--port", type=int, default=8080, help="Port for HTTP server (default: 8080)"
     )
     parser.add_argument("--record-to", help="Write received media to a file."),
     parser.add_argument("--verbose", "-v", action="count")
@@ -240,6 +240,6 @@ if __name__ == "__main__":
     # start calling f now and every 60 sec thereafter
     f(f_stop)
 
-    web.run_app(app)
+    web.run_app(app, access_log=None, host=args.host, port=args.port, ssl_context=ssl_context)
 
 
