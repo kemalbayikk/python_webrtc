@@ -7,6 +7,7 @@ import ssl
 import uuid
 import numpy as np
 import matplotlib.pyplot as plt
+import cv2
 from aiohttp import web
 from av import VideoFrame
 import aiohttp_cors
@@ -41,18 +42,59 @@ class VideoTransformTrack(MediaStreamTrack):
 
     async def recv(self):
         frame = await self.track.recv()
-        print("recv")
-        return frame
+        #print("recv")
+        if self.transform == "cartoon":
+            img = frame.to_ndarray(format="bgr24")
 
-async def index(request):
-    content = open(os.path.join(ROOT, "index.html"), "r").read()
-    return web.Response(content_type="text/html", text=content)
+            # prepare color
+            img_color = cv2.pyrDown(cv2.pyrDown(img))
+            for _ in range(6):
+                img_color = cv2.bilateralFilter(img_color, 9, 9, 7)
+            img_color = cv2.pyrUp(cv2.pyrUp(img_color))
 
+            # prepare edges
+            img_edges = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+            img_edges = cv2.adaptiveThreshold(
+                cv2.medianBlur(img_edges, 7),
+                255,
+                cv2.ADAPTIVE_THRESH_MEAN_C,
+                cv2.THRESH_BINARY,
+                9,
+                2,
+            )
+            img_edges = cv2.cvtColor(img_edges, cv2.COLOR_GRAY2RGB)
 
-async def javascript(request):
-    content = open(os.path.join(ROOT, "client.js"), "r").read()
-    return web.Response(content_type="application/javascript", text=content)
+            # combine color and edges
+            img = cv2.bitwise_and(img_color, img_edges)
 
+            # rebuild a VideoFrame, preserving timing information
+            new_frame = VideoFrame.from_ndarray(img, format="bgr24")
+            new_frame.pts = frame.pts
+            new_frame.time_base = frame.time_base
+            return new_frame
+        elif self.transform == "edges":
+            # perform edge detection
+            img = frame.to_ndarray(format="bgr24");
+            img = cv2.cvtColor(cv2.Canny(img, 100, 200), cv2.COLOR_GRAY2BGR)
+            # rebuild a VideoFrame, preserving timing information
+            new_frame = VideoFrame.from_ndarray(img, format="bgr24")
+            new_frame.pts = frame.pts
+            new_frame.time_base = frame.time_base
+            return new_frame
+        elif self.transform == "rotate":
+            # rotate image
+            img = frame.to_ndarray(format="bgr24")
+            rows, cols, _ = img.shape
+            M = cv2.getRotationMatrix2D((cols / 2, rows / 2), frame.time * 45, 1)
+            img = cv2.warpAffine(img, M, (cols, rows))
+
+            # rebuild a VideoFrame, preserving timing information
+            new_frame = VideoFrame.from_ndarray(img, format="bgr24")
+            new_frame.pts = frame.pts
+            new_frame.time_base = frame.time_base
+            return new_frame
+        else:
+            return frame
 
 async def offer(request):
     params = await request.json()
@@ -130,8 +172,6 @@ async def on_shutdown(app):
 app = web.Application()
 cors = aiohttp_cors.setup(app)
 app.on_shutdown.append(on_shutdown)
-app.router.add_get("/", index)
-app.router.add_get("/client.js", javascript)
 app.router.add_post("/offer", offer)
 
 for route in list(app.router.routes()):
@@ -144,50 +184,8 @@ for route in list(app.router.routes()):
         )
     })
 
-def f(f_stop):
-    n = random.randint(0,100)
-    url = 'http://kemalbayik.com/write_od_outputs.php'
-    myobj = {'id': '3geVNu5imLRxgWMqARnI04nsk0B2',
-             'percentage': n}
 
-    x = requests.post(url, data = myobj)
 
-    print(x.text)
-    if not f_stop.is_set():
-        # call f() again in 60 seconds
-        threading.Timer(10, f, [f_stop]).start()
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="WebRTC audio / video / data-channels demo"
-    )
-    parser.add_argument("--cert-file", help="SSL certificate file (for HTTPS)")
-    parser.add_argument("--key-file", help="SSL key file (for HTTPS)")
-    parser.add_argument(
-        "--host", default="fierce-reaches-21033.herokuapp.com", help="Host for HTTP server (default: 0.0.0.0)"
-    )
-    parser.add_argument(
-        "--port", type=int, default=8080, help="Port for HTTP server (default: 8080)"
-    )
-    parser.add_argument("--record-to", help="Write received media to a file."),
-    parser.add_argument("--verbose", "-v", action="count")
-    args = parser.parse_args()
-
-    if args.verbose:
-        logging.basicConfig(level=logging.DEBUG)
-    else:
-        logging.basicConfig(level=logging.INFO)
-
-    if args.cert_file:
-        ssl_context = ssl.SSLContext()
-        ssl_context.load_cert_chain(args.cert_file, args.key_file)
-    else:
-        ssl_context = None
-
-    f_stop = threading.Event()
-    # start calling f now and every 60 sec thereafter
-    f(f_stop)
-
-    web.run_app(app, access_log=None, host=args.host, port=args.port, ssl_context=ssl_context)
+web.run_app(app)
 
 
